@@ -383,3 +383,119 @@ query 不写入 CSV、不改库存。
 ---
 
 > 你可以把本文件直接交给 Codex，从 Prompt A 开始逐步执行。
+
+---
+
+## 9. GitHub Actions 使用说明（从零建仓库 → 自动编译 → 下载 APK）
+
+> 目标：你本机没有 Android 开发环境，也能在每一步 Prompt 之后 **确保能编译**，并且 **下载 APK 到手机安装验证**。  
+> 方法：把代码托管到 GitHub，使用 GitHub Actions 自动跑 `./gradlew testDebugUnitTest assembleDebug` 并上传 `app-debug.apk` 构建产物。
+
+### 9.1 从零创建 GitHub 仓库（只需做一次）
+1) 登录 GitHub → 右上角 `+` → `New repository`
+2) 仓库名建议：`android-inventory-voice`
+3) 选择 `Public` 或 `Private` 都可以（Private 也支持 Actions）
+4) 勾选 `Add a README file`（可选，但建议勾上）
+5) 点击 `Create repository`
+
+### 9.2 把 Codex 生成的工程代码放进仓库（两种方式）
+**方式 A：用 Git（推荐）**
+1) 在你电脑任意位置打开终端：
+   - `git clone <你的仓库地址>`
+2) 把 Codex 生成的工程文件（含 `gradlew`、`settings.gradle`、`app/` 等）复制到仓库目录
+3) 提交并推送：
+   - `git add .`
+   - `git commit -m "step1: project skeleton"`
+   - `git push`
+
+**方式 B：网页直接上传（没有 Git 也能用）**
+1) 打开仓库页面 → `Add file` → `Upload files`
+2) 拖拽整个工程文件夹内容上传（注意要包含 `gradlew`）
+3) 填写 commit message → `Commit changes`
+
+> 说明：网页上传适合初期，但后面文件多、频繁更新时，建议还是用 Git。
+
+### 9.3 添加 GitHub Actions Workflow（只需做一次）
+在仓库根目录创建文件：  
+- `.github/workflows/android-ci.yml`
+
+把下面内容原样粘贴进去：
+
+```yaml
+name: Android CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build & Unit Test
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+```
+
+然后提交并推送（或网页提交）。
+
+### 9.4 如何确认“编译通过”
+1) 打开 GitHub 仓库 → 顶部点 `Actions`
+2) 找到最新一次运行（Run）
+3) 若显示绿色 ✅：表示 **编译与单测通过**（等价于你要求的“确保能编译运行（至少能编译）”）
+4) 若失败（红色 ❌）：点进去看日志，通常是：
+   - Gradle 版本/AGP/JDK 不匹配
+   - 依赖版本冲突
+   - Kotlin/Compose 语法错误
+   - 单元测试失败
+
+> 建议：你每完成一步 Prompt，就 push 一次。只有 Actions 绿了再进入下一步。
+
+### 9.5 在哪里下载 APK（app-debug.apk）
+1) 进入仓库 → `Actions`
+2) 点击最新一次 **成功** 的 Run
+3) 在页面下方找到 `Artifacts`
+4) 下载 `app-debug-apk`
+5) 解压后得到 `app-debug.apk`
+
+### 9.6 把 APK 安装到手机上（验证“能运行”）
+1) 把 `app-debug.apk` 发送到手机（微信/网盘/数据线/手机浏览器直接下载均可）
+2) 手机设置中允许“安装未知来源应用”（不同品牌入口略有差异）
+3) 点击 APK 安装
+4) 打开 App 做最小冒烟检查（每一步 30 秒）：
+   - 能启动不闪退
+   - 页面大字、大按钮显示正常
+   - 到语音那一步：麦克风权限弹窗正常、TTS 能播报
+   - CSV 那一步：首次启动会生成两份 CSV（带表头）
+
+### 9.7（可选）每一步的推荐 commit message
+- `step1: project skeleton`
+- `step2: csv repository + inventory service`
+- `step3: deepseek client + secure api key`
+- `step4: speech recognizer + tts flow`
+- `step5: unit mismatch confirm screen`
+- `step6: voice query inventory`
+- `step7: undo last record + polish`
+
+---
